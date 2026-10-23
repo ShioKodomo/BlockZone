@@ -8,16 +8,17 @@ android {
         applicationId = "com.blockzone.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "3.3.1"
+        versionCode = 36
+        versionName = "3.4.0"
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 }
 
 dependencies {
-    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:132.0.20241021175835")
+    implementation("io.github.mlm-games:adblock:0.1.3")
+    implementation("androidx.webkit:webkit:1.16.0")
 }
