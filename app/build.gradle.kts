@@ -8,8 +8,8 @@ android {
         applicationId = "com.blockzone.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "3.3.0"
+        versionCode = 35
+        versionName = "3.3.1"
     }
 
     compileOptions {
