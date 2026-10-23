@@ -4,7 +4,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <application android:theme="@style/Theme.BlockZone" android:label="BlockZone" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher">
+    <application android:theme="@style/Theme.BlockZone" android:label="BlockZone" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:usesCleartextTraffic="false">
+        <activity android:name=".YouTubeActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
