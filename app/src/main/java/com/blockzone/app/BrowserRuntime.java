@@ -5,6 +5,7 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
 import org.mozilla.geckoview.GeckoRuntime;
+import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.WebExtension;
 import org.mozilla.geckoview.WebExtensionController;
 
@@ -30,7 +31,14 @@ public final class BrowserRuntime {
     public static synchronized GeckoRuntime get(Context context){
         if(runtime==null){
             Context app=context.getApplicationContext();
-            runtime=GeckoRuntime.create(app);
+            GeckoRuntimeSettings settings=new GeckoRuntimeSettings.Builder()
+                .extensionsProcessEnabled(true)
+                .extensionsWebAPIEnabled(true)
+                .consoleOutput(true)
+                .build();
+            runtime=GeckoRuntime.create(app,settings);
+            runtime.warmUp();
+
             WebExtensionController controller=runtime.getWebExtensionController();
             controller.enableExtensionProcessSpawning();
 
