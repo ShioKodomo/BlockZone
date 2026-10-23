@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -13,11 +16,17 @@ import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.MediaSession;
 
 public class BrowserActivity extends Activity {
     private GeckoSession session;
+    private GeckoView geckoView;
+    private boolean sessionAttached=false;
     private boolean canGoBack=false;
     private ProgressBar progress;
+    private MediaSession currentMediaSession;
+    private boolean mediaWasPlaying=false;
+    private final Handler handler=new Handler(Looper.getMainLooper());
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -54,9 +63,9 @@ public class BrowserActivity extends Activity {
         progress.setMax(100);
         root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
 
-        GeckoView view=new GeckoView(this);
-        view.setBackgroundColor(Color.BLACK);
-        root.addView(view,new LinearLayout.LayoutParams(-1,0,1));
+        geckoView=new GeckoView(this);
+        geckoView.setBackgroundColor(Color.BLACK);
+        root.addView(geckoView,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
 
         GeckoRuntime runtime=BrowserRuntime.get(this);
@@ -64,25 +73,87 @@ public class BrowserActivity extends Activity {
             .suspendMediaWhenInactive(false)
             .allowJavascript(true)
             .build();
+
         session=new GeckoSession(settings);
         session.setActive(true);
         session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
         session.setContentDelegate(new GeckoSession.ContentDelegate(){});
         session.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
             @Override public void onCanGoBack(GeckoSession s, boolean value){ canGoBack=value; }
-            @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String uri){ session.loadUri(uri); return null; }
+            @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String uri){
+                session.loadUri(uri);
+                return null;
+            }
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-            @Override public void onPageStart(GeckoSession s,String url){ progress.setVisibility(View.VISIBLE); progress.setProgress(15); }
-            @Override public void onPageStop(GeckoSession s,boolean success){ progress.setProgress(100); progress.setVisibility(View.GONE); }
+            @Override public void onPageStart(GeckoSession s,String url){
+                progress.setVisibility(View.VISIBLE);
+                progress.setProgress(15);
+            }
+            @Override public void onProgressChange(GeckoSession s,int value){
+                progress.setProgress(value);
+            }
+            @Override public void onPageStop(GeckoSession s,boolean success){
+                progress.setProgress(100);
+                progress.setVisibility(View.GONE);
+            }
+        });
+        session.setMediaSessionDelegate(new MediaSession.Delegate(){
+            @Override public void onActivated(GeckoSession s, MediaSession mediaSession){
+                currentMediaSession=mediaSession;
+            }
+            @Override public void onDeactivated(GeckoSession s, MediaSession mediaSession){
+                if(currentMediaSession==mediaSession) currentMediaSession=null;
+                mediaWasPlaying=false;
+            }
+            @Override public void onPlay(GeckoSession s, MediaSession mediaSession){
+                currentMediaSession=mediaSession;
+                mediaWasPlaying=true;
+            }
+            @Override public void onPause(GeckoSession s, MediaSession mediaSession){
+                currentMediaSession=mediaSession;
+                boolean shouldResume=mediaWasPlaying && !isDeviceInteractive();
+                if(shouldResume){
+                    handler.postDelayed(()->{
+                        try{
+                            if(currentMediaSession!=null && currentMediaSession.isActive()) currentMediaSession.play();
+                        }catch(Exception ignored){}
+                    },300);
+                }else{
+                    mediaWasPlaying=false;
+                }
+            }
+            @Override public void onStop(GeckoSession s, MediaSession mediaSession){
+                mediaWasPlaying=false;
+            }
         });
 
         session.open(runtime);
-        view.setSession(session);
+        geckoView.setSession(session);
+        sessionAttached=true;
         session.loadUri("https://m.youtube.com/");
 
         Intent playback=new Intent(this, MediaPlaybackService.class);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(playback); else startService(playback);
+    }
+
+    private boolean isDeviceInteractive(){
+        PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
+        return pm==null || pm.isInteractive();
+    }
+
+    @Override protected void onStart(){
+        super.onStart();
+        if(session!=null){
+            if(!sessionAttached && geckoView!=null){
+                try{
+                    geckoView.setSession(session);
+                    sessionAttached=true;
+                }catch(Exception ignored){}
+            }
+            session.setActive(true);
+            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
+        }
     }
 
     @Override protected void onResume(){
@@ -103,6 +174,21 @@ public class BrowserActivity extends Activity {
         super.onPause();
     }
 
+    @Override protected void onStop(){
+        if(session!=null && geckoView!=null && sessionAttached){
+            try{
+                GeckoSession released=geckoView.releaseSession();
+                if(released!=null) session=released;
+                sessionAttached=false;
+            }catch(Exception ignored){}
+        }
+        if(session!=null){
+            session.setActive(true);
+            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
+        }
+        super.onStop();
+    }
+
     private TextView button(String s,int sp){
         TextView t=new TextView(this);
         t.setText(s);
@@ -120,7 +206,12 @@ public class BrowserActivity extends Activity {
     }
 
     @Override protected void onDestroy(){
+        handler.removeCallbacksAndMessages(null);
         stopService(new Intent(this, MediaPlaybackService.class));
+        if(sessionAttached && geckoView!=null){
+            try{ geckoView.releaseSession(); }catch(Exception ignored){}
+            sessionAttached=false;
+        }
         if(session!=null && session.isOpen()) session.close();
         super.onDestroy();
     }
