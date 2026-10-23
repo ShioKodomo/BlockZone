@@ -2,7 +2,7 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "com.blockzone.app"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.blockzone.app"
@@ -19,6 +19,7 @@ android {
 }
 
 dependencies {
-    implementation("io.github.mlm-games:adblock:0.1.3")
+    implementation(files("libs/adblock-0.1.3.jar"))
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.10")
     implementation("androidx.webkit:webkit:1.16.0")
 }
