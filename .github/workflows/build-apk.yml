@@ -17,13 +17,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Build BlockZone background helper
-        working-directory: app/src/main/assets/blockzone_adblock_src
-        run: npm run build
 
       - name: Build embedded uBlock Origin
         run: |
@@ -33,6 +26,16 @@ jobs:
           make firefox
           mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets/ublock"
           cp -a dist/build/uBlock0.firefox/. "$GITHUB_WORKSPACE/app/src/main/assets/ublock/"
+
+      - name: Embed Mozilla background playback extension
+        run: |
+          rm -rf /tmp/video-bg-play app/src/main/assets/video_bg_play
+          git clone --depth 1 https://github.com/mozilla/video-bg-play.git /tmp/video-bg-play
+          mkdir -p app/src/main/assets/video_bg_play
+          cp /tmp/video-bg-play/manifest.json app/src/main/assets/video_bg_play/
+          cp /tmp/video-bg-play/video-bg-play-content.js app/src/main/assets/video_bg_play/
+          if [ -d /tmp/video-bg-play/_locales ]; then cp -a /tmp/video-bg-play/_locales app/src/main/assets/video_bg_play/; fi
+          if [ -f /tmp/video-bg-play/icon.svg ]; then cp /tmp/video-bg-play/icon.svg app/src/main/assets/video_bg_play/; fi
 
       - name: Install Android SDK packages
         run: |
@@ -60,4 +63,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete v3.2.0-arm64 --cleanup-tag -y || true
-          gh release create v3.2.0-arm64 BlockZone-3.2.0-arm64.apk --title "BlockZone 3.2.0 ARM64" --notes "BlockZone 3.2.0: uBlock Origin completo no GeckoView, remoção do filtro que atrasava o player e nova estratégia de reprodução em segundo plano mantendo a GeckoSession ativa."
+          gh release create v3.2.0-arm64 BlockZone-3.2.0-arm64.apk --title "BlockZone 3.2.0 ARM64" --notes "BlockZone 3.2.0: uBlock Origin completo no GeckoView, remoção do filtro que atrasava o player e extensão oficial Mozilla Video Background Play Fix para reprodução com tela apagada."
