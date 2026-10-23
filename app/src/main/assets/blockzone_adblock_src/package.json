@@ -1,0 +1,7 @@
+{
+  "name":"blockzone-adblock-build",
+  "private":true,
+  "version":"3.0.0",
+  "scripts":{"build":"rm -rf ../blockzone_adblock && mkdir -p ../blockzone_adblock && esbuild background.js --bundle --format=iife --platform=browser --target=firefox120 --outfile=../blockzone_adblock/background.js && cp manifest.json ../blockzone_adblock/manifest.json && cp youtube.js ../blockzone_adblock/youtube.js"},
+  "dependencies":{"@ghostery/adblocker-webextension":"2.20.1","esbuild":"0.25.10"}
+}
