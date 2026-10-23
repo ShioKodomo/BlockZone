@@ -1,10 +1,20 @@
 {
   "manifest_version": 2,
-  "name": "BlockZone Ad Blocker",
-  "version": "3.0.0",
-  "description": "Built-in filtering for the BlockZone protected browser.",
+  "name": "BlockZone Background Playback Helper",
+  "version": "3.2.0",
+  "description": "Keeps protected YouTube playback active when BlockZone is backgrounded.",
   "browser_specific_settings": {"gecko": {"id": "blockzone-adblock@local"}},
-  "background": {"scripts": ["background.js"]},
-  "content_scripts": [{"matches": ["*://*.youtube.com/*", "*://youtube.com/*"], "js": ["youtube.js"], "run_at": "document_start"}],
-  "permissions": ["<all_urls>", "webRequest", "webRequestBlocking", "storage", "nativeMessaging", "geckoViewAddons"]
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtube.com/*",
+        "*://*.youtube-nocookie.com/*"
+      ],
+      "js": ["youtube.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "permissions": ["<all_urls>"]
 }
