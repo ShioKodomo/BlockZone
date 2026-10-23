@@ -20,30 +20,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build embedded ad blocker extension
+
+      - name: Build BlockZone background helper
         working-directory: app/src/main/assets/blockzone_adblock_src
+        run: npm run build
+
+      - name: Build embedded uBlock Origin
         run: |
-          npm install --no-audit --no-fund
-          npm run build
+          rm -rf /tmp/uBlock app/src/main/assets/ublock
+          git clone --depth 1 --branch 1.75.0 https://github.com/gorhill/uBlock.git /tmp/uBlock
+          cd /tmp/uBlock
+          make firefox
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets/ublock"
+          cp -a dist/build/uBlock0.firefox/. "$GITHUB_WORKSPACE/app/src/main/assets/ublock/"
+
       - name: Install Android SDK packages
         run: |
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
       - name: Build APK
         run: gradle --no-daemon :app:assembleDebug
+
       - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.1.0-arm64.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.2.0-arm64.apk
+
       - uses: actions/upload-artifact@v4
         with:
-          name: BlockZone-3.1-APK
-          path: BlockZone-3.1.0-arm64.apk
+          name: BlockZone-3.2-APK
+          path: BlockZone-3.2.0-arm64.apk
           retention-days: 30
+
       - name: Publish direct APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v3.1.0-arm64 --cleanup-tag -y || true
-          gh release create v3.1.0-arm64 BlockZone-3.1.0-arm64.apk --title "BlockZone 3.1.0 ARM64" --notes "BlockZone 3.1.0: bloqueio antecipado de metadados de anúncios do player do YouTube, fallback de ad skip e reprodução em segundo plano com tela apagada."
+          gh release delete v3.2.0-arm64 --cleanup-tag -y || true
+          gh release create v3.2.0-arm64 BlockZone-3.2.0-arm64.apk --title "BlockZone 3.2.0 ARM64" --notes "BlockZone 3.2.0: uBlock Origin completo no GeckoView, remoção do filtro que atrasava o player e nova estratégia de reprodução em segundo plano mantendo a GeckoSession ativa."
