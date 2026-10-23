@@ -16,26 +16,22 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
-      - name: Build embedded uBlock Origin
+      - name: Bundle current adblock filter lists
         run: |
-          rm -rf /tmp/uBlock app/src/main/assets/ublock
-          git clone --depth 1 --branch 1.64.0 https://github.com/gorhill/uBlock.git /tmp/uBlock
-          cd /tmp/uBlock
-          make firefox
-          mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets/ublock"
-          cp -a dist/build/uBlock0.firefox/. "$GITHUB_WORKSPACE/app/src/main/assets/ublock/"
-
-      - name: Embed Mozilla background playback extension
-        run: |
-          rm -rf /tmp/video-bg-play app/src/main/assets/video_bg_play
-          git clone --depth 1 https://github.com/mozilla/video-bg-play.git /tmp/video-bg-play
-          mkdir -p app/src/main/assets/video_bg_play
-          cp /tmp/video-bg-play/manifest.json app/src/main/assets/video_bg_play/
-          cp /tmp/video-bg-play/video-bg-play-content.js app/src/main/assets/video_bg_play/
-          if [ -d /tmp/video-bg-play/_locales ]; then cp -a /tmp/video-bg-play/_locales app/src/main/assets/video_bg_play/; fi
-          if [ -f /tmp/video-bg-play/icon.svg ]; then cp /tmp/video-bg-play/icon.svg app/src/main/assets/video_bg_play/; fi
+          mkdir -p app/src/main/assets/adblock
+          : > app/src/main/assets/adblock/blockzone_filters.txt
+          curl -L --fail --retry 3 https://easylist.to/easylist/easylist.txt >> app/src/main/assets/adblock/blockzone_filters.txt
+          printf '\n' >> app/src/main/assets/adblock/blockzone_filters.txt
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt >> app/src/main/assets/adblock/blockzone_filters.txt
+          printf '\n' >> app/src/main/assets/adblock/blockzone_filters.txt
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt >> app/src/main/assets/adblock/blockzone_filters.txt
+          printf '\n' >> app/src/main/assets/adblock/blockzone_filters.txt
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2026.txt >> app/src/main/assets/adblock/blockzone_filters.txt
+          printf '\n' >> app/src/main/assets/adblock/blockzone_filters.txt
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt >> app/src/main/assets/adblock/blockzone_filters.txt
+          wc -c app/src/main/assets/adblock/blockzone_filters.txt
 
       - name: Install Android SDK packages
         run: |
@@ -50,17 +46,17 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.3.1-arm64.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.4.0-arm64.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BlockZone-3.3.1-APK
-          path: BlockZone-3.3.1-arm64.apk
+          name: BlockZone-3.4.0-APK
+          path: BlockZone-3.4.0-arm64.apk
           retention-days: 30
 
       - name: Publish direct APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v3.3.1-arm64 --cleanup-tag -y || true
-          gh release create v3.3.1-arm64 BlockZone-3.3.1-arm64.apk --title "BlockZone 3.3.1 ARM64" --notes "BlockZone 3.3.1: GeckoView 132 com uBlock Origin 1.64.0 compatível, processo de WebExtensions habilitado e diagnóstico de proteção antes de abrir o YouTube."
+          gh release delete v3.4.0-arm64 --cleanup-tag -y || true
+          gh release create v3.4.0-arm64 BlockZone-3.4.0-arm64.apk --title "BlockZone 3.4.0 ARM64" --notes "BlockZone 3.4.0: nova arquitetura WebView + Brave adblock-rust nativo. Sem GeckoView e sem WebExtension. Filtros EasyList/uAssets embutidos e atualizáveis dentro do app."
