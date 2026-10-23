@@ -18,6 +18,19 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Embed native adblock-rust runtime
+        run: |
+          rm -rf /tmp/adblock-aar app/libs/adblock-0.1.3.jar app/src/main/jniLibs app/src/main/assets/adblock/resources.json
+          mkdir -p /tmp/adblock-aar app/libs app/src/main/jniLibs app/src/main/assets/adblock
+          curl -L --fail --retry 3 -o /tmp/adblock.aar https://repo1.maven.org/maven2/io/github/mlm-games/adblock/0.1.3/adblock-0.1.3.aar
+          unzip -q /tmp/adblock.aar -d /tmp/adblock-aar
+          cp /tmp/adblock-aar/classes.jar app/libs/adblock-0.1.3.jar
+          if [ -d /tmp/adblock-aar/jni ]; then cp -a /tmp/adblock-aar/jni/. app/src/main/jniLibs/; fi
+          if [ -f /tmp/adblock-aar/assets/adblock/resources.json ]; then cp /tmp/adblock-aar/assets/adblock/resources.json app/src/main/assets/adblock/resources.json; fi
+          test -s app/libs/adblock-0.1.3.jar
+          test -f app/src/main/jniLibs/arm64-v8a/libadblock_ffi.so
+          test -s app/src/main/assets/adblock/resources.json
+
       - name: Bundle current adblock filter lists
         run: |
           mkdir -p app/src/main/assets/adblock
@@ -36,11 +49,11 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
-          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.6.0'
+          gradle-version: '8.9'
 
       - name: Build APK
         run: gradle --no-daemon :app:assembleDebug
