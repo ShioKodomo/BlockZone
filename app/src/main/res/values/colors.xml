@@ -1,0 +1,7 @@
+<resources>
+    <color name="black_bg">#0A0C11</color>
+    <color name="pink">#FF526A</color>
+    <color name="pink_dark">#7A2633</color>
+    <color name="card">#151820</color>
+    <color name="text_secondary">#AEB4C0</color>
+</resources>
