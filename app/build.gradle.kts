@@ -2,7 +2,7 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "com.blockzone.app"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.blockzone.app"
@@ -19,5 +19,5 @@ android {
 }
 
 dependencies {
-    implementation("org.mozilla.geckoview:geckoview:156.0.20260921121718")
+    implementation("org.mozilla.geckoview:geckoview:132.0.20241021175835")
 }
