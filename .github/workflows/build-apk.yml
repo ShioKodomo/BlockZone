@@ -21,7 +21,7 @@ jobs:
       - name: Build embedded uBlock Origin
         run: |
           rm -rf /tmp/uBlock app/src/main/assets/ublock
-          git clone --depth 1 --branch 1.75.0 https://github.com/gorhill/uBlock.git /tmp/uBlock
+          git clone --depth 1 --branch 1.64.0 https://github.com/gorhill/uBlock.git /tmp/uBlock
           cd /tmp/uBlock
           make firefox
           mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets/ublock"
@@ -50,17 +50,17 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.3.0-arm64.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.3.1-arm64.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BlockZone-3.3-APK
-          path: BlockZone-3.3.0-arm64.apk
+          name: BlockZone-3.3.1-APK
+          path: BlockZone-3.3.1-arm64.apk
           retention-days: 30
 
       - name: Publish direct APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v3.3.0-arm64 --cleanup-tag -y || true
-          gh release create v3.3.0-arm64 BlockZone-3.3.0-arm64.apk --title "BlockZone 3.3.0 ARM64" --notes "BlockZone 3.3.0: GeckoView 158, processo de WebExtensions habilitado, uBlock Origin obrigatório antes de abrir o YouTube e status visível da proteção."
+          gh release delete v3.3.1-arm64 --cleanup-tag -y || true
+          gh release create v3.3.1-arm64 BlockZone-3.3.1-arm64.apk --title "BlockZone 3.3.1 ARM64" --notes "BlockZone 3.3.1: GeckoView 132 com uBlock Origin 1.64.0 compatível, processo de WebExtensions habilitado e diagnóstico de proteção antes de abrir o YouTube."
