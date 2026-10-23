@@ -50,17 +50,17 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.2.0-arm64.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk BlockZone-3.3.0-arm64.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BlockZone-3.2-APK
-          path: BlockZone-3.2.0-arm64.apk
+          name: BlockZone-3.3-APK
+          path: BlockZone-3.3.0-arm64.apk
           retention-days: 30
 
       - name: Publish direct APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v3.2.0-arm64 --cleanup-tag -y || true
-          gh release create v3.2.0-arm64 BlockZone-3.2.0-arm64.apk --title "BlockZone 3.2.0 ARM64" --notes "BlockZone 3.2.0: uBlock Origin completo no GeckoView, remoção do filtro que atrasava o player e extensão oficial Mozilla Video Background Play Fix para reprodução com tela apagada."
+          gh release delete v3.3.0-arm64 --cleanup-tag -y || true
+          gh release create v3.3.0-arm64 BlockZone-3.3.0-arm64.apk --title "BlockZone 3.3.0 ARM64" --notes "BlockZone 3.3.0: GeckoView 158, processo de WebExtensions habilitado, uBlock Origin obrigatório antes de abrir o YouTube e status visível da proteção."
