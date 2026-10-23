@@ -37,7 +37,6 @@ public final class BrowserRuntime {
                 .consoleOutput(true)
                 .build();
             runtime=GeckoRuntime.create(app,settings);
-            runtime.warmUp();
 
             WebExtensionController controller=runtime.getWebExtensionController();
             controller.enableExtensionProcessSpawning();
