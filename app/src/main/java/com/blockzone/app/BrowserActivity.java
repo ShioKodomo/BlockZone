@@ -5,35 +5,45 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.PowerManager;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.*;
-import org.mozilla.geckoview.GeckoResult;
-import org.mozilla.geckoview.GeckoRuntime;
-import org.mozilla.geckoview.GeckoSession;
-import org.mozilla.geckoview.GeckoSessionSettings;
-import org.mozilla.geckoview.GeckoView;
-import org.mozilla.geckoview.MediaSession;
+import org.mlm.adblock.BlockDecision;
+import org.mlm.adblock.CosmeticResources;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 
 public class BrowserActivity extends Activity {
-    private GeckoSession session;
-    private GeckoView geckoView;
-    private boolean sessionAttached=false;
-    private boolean canGoBack=false;
-    private boolean youtubeLoaded=false;
+    private WebView webView;
     private ProgressBar progress;
     private TextView protectionStatus;
-    private MediaSession currentMediaSession;
-    private boolean mediaWasPlaying=false;
-    private final Handler handler=new Handler(Looper.getMainLooper());
+    private NativeAdblockManager adblock;
+    private volatile String currentUrl="https://m.youtube.com/";
+
+    private static final String BACKGROUND_FIX=
+        "(function(){try{"+
+        "Object.defineProperty(document,'hidden',{configurable:true,get:function(){return false;}});"+
+        "Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});"+
+        "document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);"+
+        "window.__bzPlaying=false;"+
+        "document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO')window.__bzPlaying=true;},true);"+
+        "document.addEventListener('pause',function(e){if(e.target&&e.target.tagName==='VIDEO'&&document.visibilityState==='visible')window.__bzPlaying=false;},true);"+
+        "setInterval(function(){var v=document.querySelector('video');if(v&&window.__bzPlaying&&v.paused){v.play().catch(function(){});}},900);"+
+        "}catch(e){}})();";
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
+
+        adblock=NativeAdblockManager.get(this);
 
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -59,7 +69,7 @@ public class BrowserActivity extends Activity {
         titleBox.addView(title,new LinearLayout.LayoutParams(-1,-2));
 
         protectionStatus=new TextView(this);
-        protectionStatus.setText("Proteção iniciando…");
+        protectionStatus.setText("Inicializando motor nativo…");
         protectionStatus.setTextColor(Color.rgb(255,191,105));
         protectionStatus.setTextSize(11);
         titleBox.addView(protectionStatus,new LinearLayout.LayoutParams(-1,-2));
@@ -68,187 +78,135 @@ public class BrowserActivity extends Activity {
         TextView shield=button("✓",20);
         shield.setTextColor(Color.rgb(110,231,173));
         top.addView(shield,new LinearLayout.LayoutParams(dp(48),dp(48)));
-
         root.addView(top,new LinearLayout.LayoutParams(-1,-2));
 
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
 
-        geckoView=new GeckoView(this);
-        geckoView.setBackgroundColor(Color.BLACK);
-        root.addView(geckoView,new LinearLayout.LayoutParams(-1,0,1));
+        webView=new WebView(this);
+        webView.setBackgroundColor(Color.BLACK);
+        root.addView(webView,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
 
-        GeckoRuntime runtime=BrowserRuntime.get(this);
-        GeckoSessionSettings settings=new GeckoSessionSettings.Builder()
-            .suspendMediaWhenInactive(false)
-            .allowJavascript(true)
-            .build();
+        configureWebView();
 
-        session=new GeckoSession(settings);
-        session.setActive(true);
-        session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
-        session.setContentDelegate(new GeckoSession.ContentDelegate(){});
-        session.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
-            @Override public void onCanGoBack(GeckoSession s, boolean value){ canGoBack=value; }
-            @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String uri){
-                if(BrowserRuntime.isUboReady()) session.loadUri(uri);
-                return null;
-            }
-        });
-        session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-            @Override public void onPageStart(GeckoSession s,String url){
-                progress.setIndeterminate(false);
-                progress.setVisibility(View.VISIBLE);
-                progress.setProgress(15);
-            }
-            @Override public void onProgressChange(GeckoSession s,int value){
-                progress.setIndeterminate(false);
-                progress.setProgress(value);
-            }
-            @Override public void onPageStop(GeckoSession s,boolean success){
-                progress.setProgress(100);
-                progress.setVisibility(View.GONE);
-            }
-        });
-        session.setMediaSessionDelegate(new MediaSession.Delegate(){
-            @Override public void onActivated(GeckoSession s, MediaSession mediaSession){
-                currentMediaSession=mediaSession;
-            }
-            @Override public void onDeactivated(GeckoSession s, MediaSession mediaSession){
-                if(currentMediaSession==mediaSession) currentMediaSession=null;
-                mediaWasPlaying=false;
-            }
-            @Override public void onPlay(GeckoSession s, MediaSession mediaSession){
-                currentMediaSession=mediaSession;
-                mediaWasPlaying=true;
-            }
-            @Override public void onPause(GeckoSession s, MediaSession mediaSession){
-                currentMediaSession=mediaSession;
-                boolean shouldResume=mediaWasPlaying && !isDeviceInteractive();
-                if(shouldResume){
-                    handler.postDelayed(()->{
-                        try{
-                            if(currentMediaSession!=null && currentMediaSession.isActive()) currentMediaSession.play();
-                        }catch(Exception ignored){}
-                    },300);
-                }else{
-                    mediaWasPlaying=false;
-                }
-            }
-            @Override public void onStop(GeckoSession s, MediaSession mediaSession){
-                mediaWasPlaying=false;
-            }
-        });
+        adblock.whenReady((ok,message)->runOnUiThread(()->{
+            protectionStatus.setText(message);
+            protectionStatus.setTextColor(ok?Color.rgb(110,231,173):Color.rgb(255,92,119));
+            progress.setVisibility(ok?View.VISIBLE:View.GONE);
+            if(ok) webView.loadUrl("https://m.youtube.com/");
+            else Toast.makeText(BrowserActivity.this,message,Toast.LENGTH_LONG).show();
+        }));
 
-        session.open(runtime);
-        geckoView.setSession(session);
-        sessionAttached=true;
-
-        BrowserRuntime.whenAdblockReady(this,new BrowserRuntime.ReadyListener(){
-            @Override public void onReady(){
-                runOnUiThread(()->{
-                    protectionStatus.setText("Proteção ativa • uBlock Origin");
-                    protectionStatus.setTextColor(Color.rgb(110,231,173));
-                    if(!youtubeLoaded){
-                        youtubeLoaded=true;
-                        progress.setIndeterminate(false);
-                        session.loadUri("https://m.youtube.com/");
-                    }
-                });
-            }
-
-            @Override public void onError(String message){
-                runOnUiThread(()->{
-                    protectionStatus.setText("Proteção indisponível");
-                    protectionStatus.setTextColor(Color.rgb(255,92,119));
-                    progress.setVisibility(View.GONE);
-                    Toast.makeText(BrowserActivity.this,message,Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-
-        Intent playback=new Intent(this, MediaPlaybackService.class);
+        Intent playback=new Intent(this,MediaPlaybackService.class);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(playback); else startService(playback);
     }
 
-    private boolean isDeviceInteractive(){
-        PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
-        return pm==null || pm.isInteractive();
-    }
+    private void configureWebView(){
+        WebSettings s=webView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setLoadsImagesAutomatically(true);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        s.setUserAgentString(s.getUserAgentString().replace("; wv","") + " BlockZone/3.4");
 
-    @Override protected void onStart(){
-        super.onStart();
-        if(session!=null){
-            if(!sessionAttached && geckoView!=null){
-                try{
-                    geckoView.setSession(session);
-                    sessionAttached=true;
-                }catch(Exception ignored){}
+        CookieManager cookies=CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(webView,true);
+
+        webView.setWebChromeClient(new WebChromeClient(){
+            @Override public void onProgressChanged(WebView view,int newProgress){
+                progress.setIndeterminate(false);
+                progress.setProgress(newProgress);
+                progress.setVisibility(newProgress>=100?View.GONE:View.VISIBLE);
             }
-            session.setActive(true);
-            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
-        }
+        });
+
+        webView.setWebViewClient(new WebViewClient(){
+            @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon){
+                currentUrl=url;
+                injectFixes(view,url);
+            }
+
+            @Override public void onPageFinished(WebView view,String url){
+                currentUrl=url;
+                injectFixes(view,url);
+                CookieManager.getInstance().flush();
+            }
+
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
+                try{
+                    String url=request.getUrl().toString();
+                    if(request.isForMainFrame()) return super.shouldInterceptRequest(view,request);
+                    String accept=request.getRequestHeaders().get("Accept");
+                    String source=request.getRequestHeaders().get("Referer");
+                    if(source==null || source.isEmpty()) source=currentUrl;
+                    BlockDecision d=adblock.check(url,source,accept);
+                    if(d!=null && d.getMatched() && !d.getException()){
+                        adblock.countBlocked();
+                        String redirect=d.getRedirect();
+                        if(redirect!=null && redirect.startsWith("data:")){
+                            int comma=redirect.indexOf(',');
+                            if(comma>0){
+                                String data=redirect.substring(comma+1);
+                                return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
+                            }
+                        }
+                        return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(new byte[0]));
+                    }
+                }catch(Throwable ignored){}
+                return super.shouldInterceptRequest(view,request);
+            }
+
+            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
+                return false;
+            }
+        });
     }
 
-    @Override protected void onResume(){
-        super.onResume();
-        if(session!=null){
-            session.setActive(true);
-            session.setFocused(true);
-            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
+    private void injectFixes(WebView view,String url){
+        view.evaluateJavascript(BACKGROUND_FIX,null);
+        CosmeticResources c=adblock.cosmetics(url);
+        if(c==null) return;
+        String css=c.css();
+        String js=c.getJs();
+        if(css!=null && !css.isEmpty()){
+            String safe=css.replace("\\","\\\\").replace("`","\\`").replace("${","\\${");
+            String inject="(function(){var s=document.getElementById('bz-css');if(!s){s=document.createElement('style');s.id='bz-css';document.documentElement.appendChild(s);}s.textContent=`"+safe+"`;})();";
+            view.evaluateJavascript(inject,null);
         }
-    }
-
-    @Override protected void onPause(){
-        if(session!=null){
-            session.setFocused(false);
-            session.setActive(true);
-            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
-        }
-        super.onPause();
-    }
-
-    @Override protected void onStop(){
-        if(session!=null && geckoView!=null && sessionAttached){
-            try{
-                GeckoSession released=geckoView.releaseSession();
-                if(released!=null) session=released;
-                sessionAttached=false;
-            }catch(Exception ignored){}
-        }
-        if(session!=null){
-            session.setActive(true);
-            session.setPriorityHint(GeckoSession.PRIORITY_HIGH);
-        }
-        super.onStop();
+        if(js!=null && !js.isEmpty()) view.evaluateJavascript(js,null);
     }
 
     private TextView button(String s,int sp){
         TextView t=new TextView(this);
-        t.setText(s);
-        t.setTextColor(Color.WHITE);
-        t.setTextSize(sp);
-        t.setGravity(Gravity.CENTER);
+        t.setText(s); t.setTextColor(Color.WHITE); t.setTextSize(sp); t.setGravity(Gravity.CENTER);
         return t;
     }
 
     private int dp(int v){ return (int)(v*getResources().getDisplayMetrics().density+.5f); }
 
     @Override public void onBackPressed(){
-        if(session!=null && canGoBack) session.goBack();
+        if(webView!=null && webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
 
+    @Override protected void onPause(){
+        CookieManager.getInstance().flush();
+        super.onPause();
+    }
+
     @Override protected void onDestroy(){
-        handler.removeCallbacksAndMessages(null);
-        stopService(new Intent(this, MediaPlaybackService.class));
-        if(sessionAttached && geckoView!=null){
-            try{ geckoView.releaseSession(); }catch(Exception ignored){}
-            sessionAttached=false;
+        stopService(new Intent(this,MediaPlaybackService.class));
+        if(webView!=null){
+            webView.stopLoading();
+            webView.setWebChromeClient(null);
+            webView.setWebViewClient(null);
+            webView.destroy();
         }
-        if(session!=null && session.isOpen()) session.close();
         super.onDestroy();
     }
 }
