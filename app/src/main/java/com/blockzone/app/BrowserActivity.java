@@ -23,7 +23,9 @@ public class BrowserActivity extends Activity {
     private GeckoView geckoView;
     private boolean sessionAttached=false;
     private boolean canGoBack=false;
+    private boolean youtubeLoaded=false;
     private ProgressBar progress;
+    private TextView protectionStatus;
     private MediaSession currentMediaSession;
     private boolean mediaWasPlaying=false;
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -46,12 +48,22 @@ public class BrowserActivity extends Activity {
         top.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         back.setOnClickListener(v->onBackPressed());
 
+        LinearLayout titleBox=new LinearLayout(this);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+        titleBox.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title=new TextView(this);
         title.setText("YouTube protegido");
         title.setTextColor(Color.WHITE);
         title.setTextSize(17);
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        top.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));
+        titleBox.addView(title,new LinearLayout.LayoutParams(-1,-2));
+
+        protectionStatus=new TextView(this);
+        protectionStatus.setText("Proteção iniciando…");
+        protectionStatus.setTextColor(Color.rgb(255,191,105));
+        protectionStatus.setTextSize(11);
+        titleBox.addView(protectionStatus,new LinearLayout.LayoutParams(-1,-2));
+        top.addView(titleBox,new LinearLayout.LayoutParams(0,dp(52),1));
 
         TextView shield=button("✓",20);
         shield.setTextColor(Color.rgb(110,231,173));
@@ -60,7 +72,7 @@ public class BrowserActivity extends Activity {
         root.addView(top,new LinearLayout.LayoutParams(-1,-2));
 
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
+        progress.setIndeterminate(true);
         root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
 
         geckoView=new GeckoView(this);
@@ -81,16 +93,18 @@ public class BrowserActivity extends Activity {
         session.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
             @Override public void onCanGoBack(GeckoSession s, boolean value){ canGoBack=value; }
             @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String uri){
-                session.loadUri(uri);
+                if(BrowserRuntime.isUboReady()) session.loadUri(uri);
                 return null;
             }
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
             @Override public void onPageStart(GeckoSession s,String url){
+                progress.setIndeterminate(false);
                 progress.setVisibility(View.VISIBLE);
                 progress.setProgress(15);
             }
             @Override public void onProgressChange(GeckoSession s,int value){
+                progress.setIndeterminate(false);
                 progress.setProgress(value);
             }
             @Override public void onPageStop(GeckoSession s,boolean success){
@@ -131,7 +145,29 @@ public class BrowserActivity extends Activity {
         session.open(runtime);
         geckoView.setSession(session);
         sessionAttached=true;
-        session.loadUri("https://m.youtube.com/");
+
+        BrowserRuntime.whenAdblockReady(this,new BrowserRuntime.ReadyListener(){
+            @Override public void onReady(){
+                runOnUiThread(()->{
+                    protectionStatus.setText("Proteção ativa • uBlock Origin");
+                    protectionStatus.setTextColor(Color.rgb(110,231,173));
+                    if(!youtubeLoaded){
+                        youtubeLoaded=true;
+                        progress.setIndeterminate(false);
+                        session.loadUri("https://m.youtube.com/");
+                    }
+                });
+            }
+
+            @Override public void onError(String message){
+                runOnUiThread(()->{
+                    protectionStatus.setText("Proteção indisponível");
+                    protectionStatus.setTextColor(Color.rgb(255,92,119));
+                    progress.setVisibility(View.GONE);
+                    Toast.makeText(BrowserActivity.this,message,Toast.LENGTH_LONG).show();
+                });
+            }
+        });
 
         Intent playback=new Intent(this, MediaPlaybackService.class);
         if(Build.VERSION.SDK_INT>=26) startForegroundService(playback); else startService(playback);
