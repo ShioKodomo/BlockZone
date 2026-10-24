@@ -1,0 +1,74 @@
+name: Build GothTime 3
+
+on:
+  push:
+    branches: [ gothtime-3-build ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Reconstruct clean GothTime 3 project
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/GothTime3"
+          mkdir -p "$RUNNER_TEMP/GothTime3"
+          tr -cd 'A-Za-z0-9+/=' < build-resources/gt3_text.tar.gz.b64 | base64 -d > "$RUNNER_TEMP/gt3.tar.gz"
+          tar -xzf "$RUNNER_TEMP/gt3.tar.gz" -C "$RUNNER_TEMP/GothTime3"
+
+          mkdir -p "$RUNNER_TEMP/GothTime3/app/src/main/assets"
+          mkdir -p "$RUNNER_TEMP/GothTime3/app/src/main/res/drawable-nodpi"
+
+          cat build-resources/gothtime_mascot.part1 \
+              build-resources/gothtime_mascot.part2 \
+              build-resources/gothtime_mascot.part3 \
+              build-resources/gothtime_mascot.part4 \
+              | tr -cd 'A-Za-z0-9+/=' \
+              | base64 -d > "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp"
+
+          cp "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp" "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot_scene.webp"
+          cp "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp" "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot_neon.webp"
+          cp "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp" "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot_tip.webp"
+          cp "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp" "$RUNNER_TEMP/GothTime3/app/src/main/res/drawable-nodpi/gothtime_icon.webp"
+
+          if grep -RniE 'blockzone|com\.blockzone|block\.zone' "$RUNNER_TEMP/GothTime3"; then
+            echo "Legacy BlockZone reference found in clean project"
+            exit 1
+          fi
+          file "$RUNNER_TEMP/GothTime3/app/src/main/assets/mascot.webp"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        run: |
+          cd "$RUNNER_TEMP/GothTime3"
+          gradle --no-daemon :app:assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/GothTime-3.0.0.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GothTime-3.0.0-APK
+          path: GothTime-3.0.0.apk
+          retention-days: 30
