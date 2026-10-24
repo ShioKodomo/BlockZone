@@ -1,0 +1,110 @@
+name: Build GothTime 3 Distribution
+
+on:
+  push:
+    branches: [ gothtime-v3-clean ]
+    paths:
+      - 'GothTime3Clean/**'
+      - '.github/workflows/gothtime-v3-dist.yml'
+      - 'GOTHTIME3_DIST_TRIGGER.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gothtime-v3-clean
+
+      - name: Prepare assets and patch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p GothTime3Clean/app/src/main/assets GothTime3Clean/app/src/main/res/drawable-nodpi dist
+          : > /tmp/mascot.b64
+          for i in 1 2 3 4; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gothtime-build/build-resources/gothtime_mascot.part${i}" >> /tmp/mascot.b64
+          done
+          tr -cd 'A-Za-z0-9+/=' < /tmp/mascot.b64 | base64 --decode > GothTime3Clean/app/src/main/assets/mascot.webp
+          cp GothTime3Clean/app/src/main/assets/mascot.webp GothTime3Clean/app/src/main/res/drawable-nodpi/gothtime_icon.webp
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('GothTime3Clean/app/src/main/java/com/gothtime/optimizer/MainActivity.java')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('return "Armazenamento usado: " + storage + "%. O Clean Cache limpa apenas os arquivos temporários do próprio GothTime; para outros apps o Android mantém proteção.");','return "Armazenamento usado: " + storage + "%. O Clean Cache limpa apenas os arquivos temporários do próprio GothTime; para outros apps o Android mantém proteção.";')
+          p.write_text(s,encoding='utf-8')
+          PY
+          if grep -RniE 'com\.blockzone|blockzone' GothTime3Clean/app/src/main --exclude='mascot.webp' --exclude='gothtime_icon.webp'; then
+            echo 'Legacy reference found in app source' >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile and capture log
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          (cd GothTime3Clean && gradle --no-daemon :app:assembleDebug) > dist/build.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 0 ]; then
+            cp GothTime3Clean/app/build/outputs/apk/debug/app-debug.apk dist/GothTime-3.0.0.apk
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/GothTime-3.0.0.apk > dist/badging.txt
+            sha256sum dist/GothTime-3.0.0.apk > dist/GothTime-3.0.0.sha256
+            echo SUCCESS > dist/STATUS.txt
+          else
+            echo FAILED > dist/STATUS.txt
+          fi
+          exit 0
+
+      - name: Verify successful APK
+        if: steps.compile.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "package: name='com.gothtime.optimizer'" dist/badging.txt
+          grep -q "versionName='3.0.0'" dist/badging.txt
+          rm -rf /tmp/apk && mkdir /tmp/apk
+          unzip -q dist/GothTime-3.0.0.apk -d /tmp/apk
+          test -s /tmp/apk/assets/mascot.webp
+          if find /tmp/apk -type f \( -name '*.dex' -o -name '*.arsc' \) -print0 | xargs -0 strings | grep -qiE 'com\.blockzone|blockzone'; then
+            echo 'Legacy string found inside APK' >&2
+            exit 1
+          fi
+
+      - name: Commit distribution result
+        shell: bash
+        run: |
+          git config user.name 'GothTime Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -f dist/STATUS.txt dist/build.log
+          if [ -f dist/GothTime-3.0.0.apk ]; then
+            git add -f dist/GothTime-3.0.0.apk dist/GothTime-3.0.0.sha256 dist/badging.txt
+          fi
+          git commit -m 'GothTime 3 distribution result [skip ci]' || true
+          git push origin HEAD:gothtime-v3-clean
+
+      - name: Fail job if compilation failed
+        if: steps.compile.outputs.exit_code != '0'
+        run: exit 1
