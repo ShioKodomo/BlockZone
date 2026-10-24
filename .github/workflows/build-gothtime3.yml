@@ -32,7 +32,12 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/GothTime3"
           mkdir -p "$RUNNER_TEMP/GothTime3"
-          tr -cd 'A-Za-z0-9+/=' < build-resources/gt3_text.tar.gz.b64 | head -c 19568 | base64 -d > "$RUNNER_TEMP/gt3.tar.gz"
+          cat build-resources/gt3_text.part1 \
+              build-resources/gt3_text.part2 \
+              build-resources/gt3_text.part3 \
+              build-resources/gt3_text.part4 \
+              | tr -cd 'A-Za-z0-9+/=' \
+              | base64 -d > "$RUNNER_TEMP/gt3.tar.gz"
           gzip -t "$RUNNER_TEMP/gt3.tar.gz"
           tar -xzf "$RUNNER_TEMP/gt3.tar.gz" -C "$RUNNER_TEMP/GothTime3"
 
