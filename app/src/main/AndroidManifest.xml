@@ -4,22 +4,27 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <queries>
-        <package android:name="com.miui.securitycenter" />
-    </queries>
+
     <application
         android:theme="@style/Theme.BlockZone"
         android:label="GothTime"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">
-        <activity android:name=".GothTimeActivity" android:screenOrientation="portrait" android:exported="true">
+
+        <activity
+            android:name=".HomeActivity"
+            android:screenOrientation="portrait"
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".HomeActivity" android:screenOrientation="portrait" android:exported="false" />
-        <receiver android:name=".MaintenanceReceiver" android:enabled="true" android:exported="false" />
+
+        <receiver
+            android:name=".MaintenanceReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 </manifest>
