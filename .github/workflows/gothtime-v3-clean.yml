@@ -1,0 +1,98 @@
+name: Build GothTime 3 Clean APK
+
+on:
+  push:
+    branches: [ gothtime-v3-clean ]
+    paths:
+      - 'GothTime3Clean/**'
+      - '.github/workflows/gothtime-v3-clean.yml'
+      - 'GOTHTIME3_BUILD_TRIGGER.txt'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout clean branch
+        uses: actions/checkout@v4
+
+      - name: Prepare GothTime mascot asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p GothTime3Clean/app/src/main/assets
+          mkdir -p GothTime3Clean/app/src/main/res/drawable-nodpi
+          : > /tmp/gothtime_mascot.b64
+          for i in 1 2 3 4; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gothtime-build/build-resources/gothtime_mascot.part${i}" >> /tmp/gothtime_mascot.b64
+          done
+          tr -cd 'A-Za-z0-9+/=' < /tmp/gothtime_mascot.b64 | base64 --decode > GothTime3Clean/app/src/main/assets/mascot.webp
+          cp GothTime3Clean/app/src/main/assets/mascot.webp GothTime3Clean/app/src/main/res/drawable-nodpi/gothtime_icon.webp
+          file GothTime3Clean/app/src/main/assets/mascot.webp
+          file GothTime3Clean/app/src/main/assets/mascot.webp | grep -q 'Web/P image'
+
+      - name: Apply source hotfix and purity checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('GothTime3Clean/app/src/main/java/com/gothtime/optimizer/MainActivity.java')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('return "Armazenamento usado: " + storage + "%. O Clean Cache limpa apenas os arquivos temporários do próprio GothTime; para outros apps o Android mantém proteção.");', 'return "Armazenamento usado: " + storage + "%. O Clean Cache limpa apenas os arquivos temporários do próprio GothTime; para outros apps o Android mantém proteção.";')
+          p.write_text(s, encoding='utf-8')
+          PY
+          if grep -RniE 'com\.blockzone|blockzone' GothTime3Clean/app/src/main --exclude='mascot.webp' --exclude='gothtime_icon.webp'; then
+            echo 'Legacy project reference found inside GothTime app source.'
+            exit 1
+          fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        working-directory: GothTime3Clean
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK identity and clean package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp GothTime3Clean/app/build/outputs/apk/debug/app-debug.apk GothTime-3.0.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging GothTime-3.0.0.apk | tee /tmp/badging.txt
+          grep -q "package: name='com.gothtime.optimizer'" /tmp/badging.txt
+          grep -q "versionName='3.0.0'" /tmp/badging.txt
+          rm -rf /tmp/gothtime-apk && mkdir -p /tmp/gothtime-apk
+          unzip -q GothTime-3.0.0.apk -d /tmp/gothtime-apk
+          if find /tmp/gothtime-apk -type f \( -name '*.dex' -o -name '*.xml' -o -name '*.arsc' \) -print0 | xargs -0 strings | grep -qiE 'com\.blockzone|blockzone'; then
+            echo 'Legacy project string found inside APK.'
+            exit 1
+          fi
+          test -s /tmp/gothtime-apk/assets/mascot.webp
+          sha256sum GothTime-3.0.0.apk | tee GothTime-3.0.0.sha256
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GothTime-3.0.0-APK
+          path: |
+            GothTime-3.0.0.apk
+            GothTime-3.0.0.sha256
+          retention-days: 30
