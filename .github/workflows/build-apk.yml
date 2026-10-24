@@ -21,7 +21,7 @@ jobs:
       - name: Assemble GothTime 2.1.1 visual assets
         run: |
           mkdir -p app/src/main/assets/gothtime app/src/main/res/drawable-nodpi
-          cat build-resources/gothtime_mascot.part1 build-resources/gothtime_mascot.part2 build-resources/gothtime_mascot.part3 build-resources/gothtime_mascot.part4 | base64 -d > app/src/main/assets/gothtime/mascot.webp
+          cat build-resources/gothtime_mascot.part1 build-resources/gothtime_mascot.part2 build-resources/gothtime_mascot.part3 build-resources/gothtime_mascot.part4 | tr -cd 'A-Za-z0-9+/=' | base64 --decode --ignore-garbage > app/src/main/assets/gothtime/mascot.webp
           cat build-resources/gothtime_ui.part1 build-resources/gothtime_ui.part2 build-resources/gothtime_ui.part3 build-resources/gothtime_ui.part4 > app/src/main/assets/gothtime/index.html
           cp app/src/main/assets/gothtime/mascot.webp app/src/main/res/drawable-nodpi/gothtime_icon.webp
           rm -f app/src/main/assets/gothtime/mascot.b64
@@ -29,8 +29,9 @@ jobs:
           sed -i 's/versionCode = [0-9][0-9]*/versionCode = 5/' app/build.gradle.kts
           sed -i 's/versionName = "[^"]*"/versionName = "2.1.1"/' app/build.gradle.kts
           test -s app/src/main/assets/gothtime/mascot.webp
+          file app/src/main/assets/gothtime/mascot.webp | tee /tmp/mascot-type.txt
+          grep -q 'Web/P image' /tmp/mascot-type.txt
           grep -q 'class="action hot"' app/src/main/assets/gothtime/index.html
-          file app/src/main/assets/gothtime/mascot.webp
           wc -c app/src/main/assets/gothtime/index.html app/src/main/assets/gothtime/mascot.webp
 
       - name: Prepare legacy compile dependency
