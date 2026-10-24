@@ -18,6 +18,21 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Assemble GothTime 2.1.1 visual assets
+        run: |
+          mkdir -p app/src/main/assets/gothtime app/src/main/res/drawable-nodpi
+          cat build-resources/gothtime_mascot.part1 build-resources/gothtime_mascot.part2 build-resources/gothtime_mascot.part3 build-resources/gothtime_mascot.part4 | base64 -d > app/src/main/assets/gothtime/mascot.webp
+          cat build-resources/gothtime_ui.part1 build-resources/gothtime_ui.part2 build-resources/gothtime_ui.part3 build-resources/gothtime_ui.part4 > app/src/main/assets/gothtime/index.html
+          cp app/src/main/assets/gothtime/mascot.webp app/src/main/res/drawable-nodpi/gothtime_icon.webp
+          rm -f app/src/main/assets/gothtime/mascot.b64
+          sed -i 's#@mipmap/ic_launcher#@drawable/gothtime_icon#g' app/src/main/AndroidManifest.xml
+          sed -i 's/versionCode = [0-9][0-9]*/versionCode = 5/' app/build.gradle.kts
+          sed -i 's/versionName = "[^"]*"/versionName = "2.1.1"/' app/build.gradle.kts
+          test -s app/src/main/assets/gothtime/mascot.webp
+          grep -q 'class="action hot"' app/src/main/assets/gothtime/index.html
+          file app/src/main/assets/gothtime/mascot.webp
+          wc -c app/src/main/assets/gothtime/index.html app/src/main/assets/gothtime/mascot.webp
+
       - name: Prepare legacy compile dependency
         run: |
           rm -rf /tmp/adblock-aar app/libs/adblock-0.1.3.jar app/src/main/jniLibs app/src/main/assets/adblock/resources.json
@@ -41,10 +56,10 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Prepare APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk GothTime.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk GothTime-2.1.1.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GothTime-APK
-          path: GothTime.apk
+          name: GothTime-2.1.1-APK
+          path: GothTime-2.1.1.apk
           retention-days: 30
