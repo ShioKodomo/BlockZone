@@ -1,7 +1,5 @@
-# BlockZone 3.0
+# BlockZone
 
-Aplicativo Android pessoal com proteção local DNS/VPN e navegador protegido baseado em GeckoView.
+Branch principal: BlockZone.
 
-A área YouTube abre o próprio YouTube dentro do BlockZone, com uma WebExtension incorporada usando Ghostery Adblocker e filtros específicos para publicidade e elementos patrocinados.
-
-Build automático: GitHub Actions gera o artefato `BlockZone-3.apk`.
+A branch `gothtime-build` é uma bancada isolada usada somente para compilar o APK GothTime 1.0 solicitado pelo proprietário do repositório. Nenhuma alteração desta branch afeta o aplicativo BlockZone da branch principal.
