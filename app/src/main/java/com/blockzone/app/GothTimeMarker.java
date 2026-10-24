@@ -1,0 +1,1 @@
+package com.blockzone.app; public final class GothTimeMarker { private GothTimeMarker(){} public static final String VERSION="2.0"; }
