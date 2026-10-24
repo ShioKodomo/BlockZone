@@ -13,12 +13,13 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">
-        <activity android:name=".HomeActivity" android:screenOrientation="portrait" android:exported="true">
+        <activity android:name=".GothTimeActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity android:name=".HomeActivity" android:screenOrientation="portrait" android:exported="false" />
         <receiver android:name=".MaintenanceReceiver" android:enabled="true" android:exported="false" />
     </application>
 </manifest>
