@@ -15,10 +15,21 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.*;
+
+import androidx.webkit.ServiceWorkerClientCompat;
+import androidx.webkit.ServiceWorkerControllerCompat;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+
 import org.mlm.adblock.BlockDecision;
 import org.mlm.adblock.CosmeticResources;
+
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
 public class BrowserActivity extends Activity {
     private WebView webView;
@@ -26,16 +37,25 @@ public class BrowserActivity extends Activity {
     private TextView protectionStatus;
     private NativeAdblockManager adblock;
     private volatile String currentUrl="https://m.youtube.com/";
+    private boolean documentStartSupported=false;
 
-    private static final String BACKGROUND_FIX=
+    private static final String BACKGROUND_EARLY=
         "(function(){try{"+
-        "Object.defineProperty(document,'hidden',{configurable:true,get:function(){return false;}});"+
-        "Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});"+
-        "document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);"+
-        "window.__bzPlaying=false;"+
-        "document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO')window.__bzPlaying=true;},true);"+
-        "document.addEventListener('pause',function(e){if(e.target&&e.target.tagName==='VIDEO'&&document.visibilityState==='visible')window.__bzPlaying=false;},true);"+
-        "setInterval(function(){var v=document.querySelector('video');if(v&&window.__bzPlaying&&v.paused){v.play().catch(function(){});}},900);"+
+        "if(window.__bzBgInstalled)return;window.__bzBgInstalled=true;"+
+        "var pd=Object.getOwnPropertyDescriptor(Document.prototype,'visibilityState');"+
+        "var ph=Object.getOwnPropertyDescriptor(Document.prototype,'hidden');"+
+        "var nativeVis=function(){try{return pd&&pd.get?pd.get.call(document):'visible';}catch(e){return 'visible';}};"+
+        "var wasPlaying=false;"+
+        "var realPause=HTMLMediaElement.prototype.pause;"+
+        "HTMLMediaElement.prototype.pause=function(){try{if(nativeVis()!=='visible'&&wasPlaying&&!this.ended)return;}catch(e){}return realPause.apply(this,arguments);};"+
+        "try{Object.defineProperty(document,'hidden',{configurable:true,get:function(){return false;}});}catch(e){}"+
+        "try{Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});}catch(e){}"+
+        "try{document.hasFocus=function(){return true;};}catch(e){}"+
+        "var realAdd=EventTarget.prototype.addEventListener;"+
+        "EventTarget.prototype.addEventListener=function(t,l,o){if((this===document||this===window)&&(t==='visibilitychange'||t==='webkitvisibilitychange'||t==='freeze'||t==='pagehide'))return;return realAdd.call(this,t,l,o);};"+
+        "realAdd.call(document,'play',function(e){if(e.target&&e.target.tagName==='VIDEO')wasPlaying=true;},true);"+
+        "realAdd.call(document,'pause',function(e){if(e.target&&e.target.tagName==='VIDEO'&&nativeVis()==='visible')wasPlaying=false;},true);"+
+        "setInterval(function(){try{var v=document.querySelector('video');if(v&&wasPlaying&&nativeVis()!=='visible'&&v.paused&&!v.ended)v.play().catch(function(){});}catch(e){}},500);"+
         "}catch(e){}})();";
 
     @Override public void onCreate(Bundle b){
@@ -69,7 +89,7 @@ public class BrowserActivity extends Activity {
         titleBox.addView(title,new LinearLayout.LayoutParams(-1,-2));
 
         protectionStatus=new TextView(this);
-        protectionStatus.setText("Inicializando motor nativo…");
+        protectionStatus.setText("Inicializando proteção…");
         protectionStatus.setTextColor(Color.rgb(255,191,105));
         protectionStatus.setTextSize(11);
         titleBox.addView(protectionStatus,new LinearLayout.LayoutParams(-1,-2));
@@ -84,19 +104,30 @@ public class BrowserActivity extends Activity {
         progress.setIndeterminate(true);
         root.addView(progress,new LinearLayout.LayoutParams(-1,dp(2)));
 
+        configureServiceWorker();
+
         webView=new WebView(this);
         webView.setBackgroundColor(Color.BLACK);
         root.addView(webView,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
 
         configureWebView();
+        installEarlyScripts();
 
         adblock.whenReady((ok,message)->runOnUiThread(()->{
-            protectionStatus.setText(message);
-            protectionStatus.setTextColor(ok?Color.rgb(110,231,173):Color.rgb(255,92,119));
-            progress.setVisibility(ok?View.VISIBLE:View.GONE);
-            if(ok) webView.loadUrl("https://m.youtube.com/");
-            else Toast.makeText(BrowserActivity.this,message,Toast.LENGTH_LONG).show();
+            if(ok){
+                protectionStatus.setText(documentStartSupported
+                    ? "Proteção ativa • filtro antecipado do YouTube"
+                    : "Proteção ativa • WebView sem filtro antecipado");
+                protectionStatus.setTextColor(documentStartSupported?Color.rgb(110,231,173):Color.rgb(255,191,105));
+                progress.setVisibility(View.VISIBLE);
+                webView.loadUrl("https://m.youtube.com/");
+            }else{
+                protectionStatus.setText(message);
+                protectionStatus.setTextColor(Color.rgb(255,92,119));
+                progress.setVisibility(View.GONE);
+                Toast.makeText(BrowserActivity.this,message,Toast.LENGTH_LONG).show();
+            }
         }));
 
         Intent playback=new Intent(this,MediaPlaybackService.class);
@@ -111,7 +142,8 @@ public class BrowserActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setLoadsImagesAutomatically(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        s.setUserAgentString(s.getUserAgentString().replace("; wv","") + " BlockZone/3.4");
+        String ua=s.getUserAgentString().replace("; wv","").replace(" Version/4.0","");
+        s.setUserAgentString(ua);
 
         CookieManager cookies=CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -128,37 +160,19 @@ public class BrowserActivity extends Activity {
         webView.setWebViewClient(new WebViewClient(){
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon){
                 currentUrl=url;
-                injectFixes(view,url);
+                if(!documentStartSupported) view.evaluateJavascript(BACKGROUND_EARLY,null);
             }
 
             @Override public void onPageFinished(WebView view,String url){
                 currentUrl=url;
-                injectFixes(view,url);
+                injectCosmetics(view,url);
                 CookieManager.getInstance().flush();
             }
 
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
-                try{
-                    String url=request.getUrl().toString();
-                    if(request.isForMainFrame()) return super.shouldInterceptRequest(view,request);
-                    String accept=request.getRequestHeaders().get("Accept");
-                    String source=request.getRequestHeaders().get("Referer");
-                    if(source==null || source.isEmpty()) source=currentUrl;
-                    BlockDecision d=adblock.check(url,source,accept);
-                    if(d!=null && d.getMatched() && !d.getException()){
-                        adblock.countBlocked();
-                        String redirect=d.getRedirect();
-                        if(redirect!=null && redirect.startsWith("data:")){
-                            int comma=redirect.indexOf(',');
-                            if(comma>0){
-                                String data=redirect.substring(comma+1);
-                                return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
-                            }
-                        }
-                        return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(new byte[0]));
-                    }
-                }catch(Throwable ignored){}
-                return super.shouldInterceptRequest(view,request);
+                if(request.isForMainFrame()) return super.shouldInterceptRequest(view,request);
+                WebResourceResponse r=intercept(request,currentUrl);
+                return r!=null?r:super.shouldInterceptRequest(view,request);
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
@@ -167,8 +181,58 @@ public class BrowserActivity extends Activity {
         });
     }
 
-    private void injectFixes(WebView view,String url){
-        view.evaluateJavascript(BACKGROUND_FIX,null);
+    private void installEarlyScripts(){
+        if(!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
+        try{
+            String ytScript=readAsset("adblock/yt_mobile_player_request.js");
+            String all=ytScript+"\ntry{ytMobilePlayerRequest('lactmilli');}catch(e){}\n"+BACKGROUND_EARLY;
+            Set<String> origins=new HashSet<>();
+            origins.add("https://m.youtube.com");
+            origins.add("https://www.youtube.com");
+            WebViewCompat.addDocumentStartJavaScript(webView,all,origins);
+            documentStartSupported=true;
+        }catch(Throwable e){
+            documentStartSupported=false;
+        }
+    }
+
+    private void configureServiceWorker(){
+        if(!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) ||
+           !WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) return;
+        try{
+            ServiceWorkerControllerCompat controller=ServiceWorkerControllerCompat.getInstance();
+            controller.setServiceWorkerClient(new ServiceWorkerClientCompat(){
+                @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){
+                    return intercept(request,"https://m.youtube.com/");
+                }
+            });
+        }catch(Throwable ignored){}
+    }
+
+    private WebResourceResponse intercept(WebResourceRequest request,String fallbackSource){
+        try{
+            String url=request.getUrl().toString();
+            String accept=request.getRequestHeaders().get("Accept");
+            String source=request.getRequestHeaders().get("Referer");
+            if(source==null || source.isEmpty()) source=fallbackSource;
+            BlockDecision d=adblock.check(url,source,accept);
+            if(d!=null && d.getMatched() && !d.getException()){
+                adblock.countBlocked();
+                String redirect=d.getRedirect();
+                if(redirect!=null && redirect.startsWith("data:")){
+                    int comma=redirect.indexOf(',');
+                    if(comma>0){
+                        String data=redirect.substring(comma+1);
+                        return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
+                    }
+                }
+                return new WebResourceResponse("text/plain","utf-8",new ByteArrayInputStream(new byte[0]));
+            }
+        }catch(Throwable ignored){}
+        return null;
+    }
+
+    private void injectCosmetics(WebView view,String url){
         CosmeticResources c=adblock.cosmetics(url);
         if(c==null) return;
         String css=c.css();
@@ -179,6 +243,15 @@ public class BrowserActivity extends Activity {
             view.evaluateJavascript(inject,null);
         }
         if(js!=null && !js.isEmpty()) view.evaluateJavascript(js,null);
+    }
+
+    private String readAsset(String path) throws Exception {
+        try(InputStream in=getAssets().open(path)){
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            byte[] buf=new byte[8192]; int n;
+            while((n=in.read(buf))!=-1) out.write(buf,0,n);
+            return out.toString(StandardCharsets.UTF_8.name());
+        }
     }
 
     private TextView button(String s,int sp){
